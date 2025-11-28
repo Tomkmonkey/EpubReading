@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小说阅读</title>
+</head>
+<body>
+    <script>
+        (() => {
+            'use strict';
+            // 配置项
+            const cfg = {
+                // 从API获取novelUrl
+                apiUrl: 'https://lock.867831.xyz/sig.php?api',
+                backupNovelUrl: 'null',//备用url，用于apiUrl失效时使用
+                bgUrl: 'https://testingcf.jsdelivr.net/gh/Tomkmonkey/tjOnlineFile@main/dianlutu/IMG_202511229021_1920x1080.png',
+                defaultText: '29101×29388厘米',
+                storageKey: 'novelProgress'
+            };
+
+            // 全局变量
+            let flag = 1, timer = null, txtEl = null, novel = null, idx = localStorage.getItem(cfg.storageKey) | 0;
+
+            // 工具函数：设置样式
+            const setStyle = (el, styles) => Object.assign(el.style, styles);
+
+            // 清除页面+基础样式
+            document.body.innerHTML = '';
+            setStyle(document.body, { margin: 0, padding: 0, fontFamily: 'Arial,sans-serif' });
+
+            // 创建背景图
+            const bg = document.createElement('img');
+            Object.assign(bg, { src: cfg.bgUrl, alt: '背景', onerror: () => (bg.style.display = 'none', document.body.style.backgroundColor = '#fff') });
+            setStyle(bg, { width: '100%', height: '100vh', objectFit: 'contain', backgroundColor: '#fff', position: 'absolute', zIndex: 1 });
+            document.body.appendChild(bg);
+
+            // 控制显示状态
+            const setFlag = val => {
+                flag = val;
+                txtEl.style.display = val ? 'block' : 'none';
+                if (val) {
+                    timer && clearTimeout(timer);
+                    timer = setTimeout(() => (flag = 0, txtEl.textContent = cfg.defaultText), 10000);
+                } else clearTimeout(timer);
+            };
+
+            // 更新文本
+            const updateTxt = () => {
+                txtEl.textContent = novel?.paragraphs?.length 
+                    ? novel.paragraphs[idx]?.text || '段落为空' 
+                    : '无数据';
+                setFlag(1);
+            };
+
+            // 段落导航
+            const nav = dir => {
+                if (!novel?.paragraphs?.length) return txtEl.textContent = '无段落', setFlag(1);
+                const newIdx = Math.max(0, Math.min(idx + dir, novel.paragraphs.length - 1));
+                if (newIdx === idx) return txtEl.textContent = dir > 0 ? '最后一段' : '第一段', setFlag(1);
+                idx = newIdx;
+                updateTxt();
+                localStorage.setItem(cfg.storageKey, idx);
+            };
+
+            // 创建文本容器
+            txtEl = document.createElement('div');
+            setStyle(txtEl, {
+                fontSize: '10px', color: '#6d6d6d', position: 'fixed',
+                left: '1px', bottom: '3px', width: '1530px', display: 'inline-block',
+                maxHeight: '16px', padding: '2px', background: 'rgba(252,252,252,1)',
+                borderRadius: '3px', boxSizing: 'border-box', overflowY: 'auto',
+                wordWrap: 'break-word', whiteSpace: 'normal', zIndex: 999
+            });
+            txtEl.textContent = '初始化中...';
+            document.body.appendChild(txtEl);
+
+            // 文本容器事件
+            txtEl.addEventListener('mouseenter', () => document.body.style.overflow = 'hidden');
+            txtEl.addEventListener('mouseleave', () => document.body.style.overflow = '');
+            txtEl.addEventListener('wheel', e => e.stopPropagation());
+
+            // 创建导航按钮
+            const createBtn = (txt, bottom, dir) => {
+                const btn = document.createElement('button');
+                btn.textContent = txt;
+                setStyle(btn, {
+                    position: 'fixed', bottom, right: '10px', width: '40px', height: '40px',
+                    color: 'rgba(76,76,76,1)', opacity: '0.8', border: 'none', outline: 'none', zIndex: 999
+                });
+                btn.onclick = () => nav(dir);
+                return btn;
+            };
+            document.body.appendChild(createBtn('<', '65px', -1));
+            document.body.appendChild(createBtn('>', '20px', 1));
+
+            // 从API获取novelUrl并加载小说数据
+            const loadNovelData = async () => {
+                try {
+                    // 先尝试从API获取URL
+                    txtEl.textContent = '正在获取链接...';
+                    const apiResponse = await fetch(cfg.apiUrl);
+                    const apiData = await apiResponse.json();
+                    
+                    let novelUrl = cfg.backupNovelUrl; // 默认使用备用URL
+                    
+                    if (apiData.status === 200 && apiData.data && apiData.data.url) {
+                        novelUrl = apiData.data.url;
+                        console.log('从API获取到URL:', novelUrl);
+                    } else {
+                        console.warn('API返回数据格式不正确，使用备用URL');
+                    }
+                    
+                    // 使用获取到的URL加载小说数据
+                    txtEl.textContent = '正在加载小说...';
+                    const novelResponse = await fetch(novelUrl);
+                    novel = await novelResponse.json();
+                    updateTxt();
+                    
+                } catch (err) {
+                    console.error('加载失败:', err);
+                    // 如果API失败，尝试使用备用URL
+                    try {
+                        txtEl.textContent = 'API失败，尝试备用链接...';
+                        const backupResponse = await fetch(cfg.backupNovelUrl);
+                        novel = await backupResponse.json();
+                        updateTxt();
+                    } catch (backupErr) {
+                        txtEl.textContent = '全部加载失败';
+                        console.error('备用链接也失败:', backupErr);
+                    }
+                }
+            };
+
+            // 开始加载小说数据
+            loadNovelData();
+
+            setFlag(1);
+        })();
+    </script>
+</body>
+</html>
